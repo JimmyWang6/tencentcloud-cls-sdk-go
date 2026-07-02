@@ -60,9 +60,16 @@ func (accumulator *Accumulator) createNewProducerBatch(logType interface{}, call
 	if item, ok := logType.(*Log); ok {
 		newProducerBatch := NewProducerBatch(topicId, accumulator.producerConfig, callback, item, generatePackageId(accumulator.producerHash, accumulator.batchID))
 		accumulator.logTopicData[topicId] = newProducerBatch
+		// The first log(s) of a new batch are accounted into batch.totalDataSize by
+		// NewProducerBatch, and the worker subtracts the whole totalDataSize on completion.
+		// Without adding it here, producerLogGroupSize drifts negative (each batch's first
+		// log is subtracted but never added), so the TotalSizeLnBytes backpressure never
+		// triggers and memory grows unbounded for messages larger than MaxBatchSize.
+		asyncAtomic.AddInt64(&accumulator.producer.producerLogGroupSize, newProducerBatch.totalDataSize)
 	} else if logList, ok := logType.([]*Log); ok {
 		newProducerBatch := NewProducerBatch(topicId, accumulator.producerConfig, callback, logList, generatePackageId(accumulator.producerHash, accumulator.batchID))
 		accumulator.logTopicData[topicId] = newProducerBatch
+		asyncAtomic.AddInt64(&accumulator.producer.producerLogGroupSize, newProducerBatch.totalDataSize)
 	}
 }
 
