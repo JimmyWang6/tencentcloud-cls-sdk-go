@@ -38,8 +38,11 @@ func GetLogSizeCalculate(log *Log) (int, error) {
 	count := len(logContent)
 
 	for i := 0; i < count; i++ {
-		if len(*logContent[i].Value) > 1*1024*1024 {
-			return 0, fmt.Errorf("content value can not be than 1M")
+		// 单字段上限放宽到 5MB（= 单批 / 单 LogGroup 上限，见 sync_producer_client.go 5242880）：
+		// 原来的 1MB 是 SDK 侧本地约束，会在入队前拒掉 ~1MB 的字段（如整条 OTEL span 的
+		// attribute），触发前需上游 offload。放宽到 5MB 后单字段能跟批上限对齐，是否真接受由服务端定。
+		if len(*logContent[i].Value) > 5*1024*1024 {
+			return 0, fmt.Errorf("content value can not be larger than 5M")
 		}
 		sizeInBytes += len(*logContent[i].Value)
 		sizeInBytes += len(*logContent[i].Key)
